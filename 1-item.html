@@ -1,0 +1,544 @@
+<body
+    bis_register="W3sibWFzdGVyIjp0cnVlLCJleHRlbnNpb25JZCI6ImVwcGlvY2VtaG1ubGJoanBsY2drb2ZjaWllZ29tY29uIiwiYWRibG9ja2VyU3RhdHVzIjp7IkRJU1BMQVkiOiJkaXNhYmxlZCIsIkZBQ0VCT09LIjoiZGlzYWJsZWQiLCJUV0lUVEVSIjoiZGlzYWJsZWQiLCJSRURESVQiOiJkaXNhYmxlZCJ9LCJ2ZXJzaW9uIjoiMS45LjEwIiwic2NvcmUiOjEwOTEwfV0="
+    cz-shortcut-listen="true">
+
+    <div class="none">
+        <section class="cafe-page js-cafe-items">
+            <h2 style="margin-left: 15px"> Barbucks</h2>
+            <div class="cafe-items">
+                <div class="cafe-item js-item" data-item-id="1" data-item-price="30" bis_skin_checked="1">
+                    <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+                    <div class="cafe-item-photo" bis_skin_checked="1">
+                        <img src="/meal.png" style="max-width: 90px;">
+                    </div>
+                    <div class="cafe-item-label" bis_skin_checked="1">
+                        <span class="cafe-item-title">Barbuks dark</span>
+                        <p class="cafe-item-price">30$</p>
+                    </div>
+                    <div class="cafe-item-buttons" bis_skin_checked="1">
+                        <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+                            <span class="ripple-mask"><span class="ripple"></span></span>
+                        </button>
+                        <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+                            <span class="button-item-label">+</span>
+                            <span class="ripple-mask"><span class="ripple"></span></span>
+                        </button>
+                    </div>
+                </div>
+        </section>
+    </div>
+
+    <script src="./assets/jquery.min.js"></script>
+    <script src="./assets/tgsticker.js"></script>
+    <script>
+
+        var Cafe = {
+            canPay: false,
+            modeOrder: false,
+            totalPrice: 0,
+            isLoading: false,
+            isClosed: false,
+
+            toggleMode: function (mode_order) {
+                Cafe.modeOrder = mode_order;
+                var anim_duration, match;
+                try {
+                    anim_duration = window.getComputedStyle(document.body).getPropertyValue('--page-animation-duration');
+                    if (match = /([\d\.]+)(ms|s)/.exec(anim_duration)) {
+                        anim_duration = +match[1];
+                        if (match[2] == 's') {
+                            anim_duration *= 1000;
+                        }
+                    } else {
+                        anim_duration = 400;
+                    }
+                } catch (e) {
+                    anim_duration = 400;
+                }
+                if (mode_order) {
+                    var height = $('.js-cafe-items').height();
+                    $('.js-item-lottie').each(function () {
+                        RLottie.pause(this);
+                    });
+                    $('.cafe-order-overview').show();
+                    $('.js-cafe-items').css('maxHeight', height).redraw();
+                    $('body').addClass('order-mode');
+                    $('.js-order-comment-field').each(function () {
+                        autosize.update(this);
+                    });
+                    Telegram.WebApp.expand();
+                    Telegram.WebApp.BackButton.show();
+                } else {
+                    $('.js-item-lottie').each(function () {
+                        RLottie.reset(this);
+                    });
+                    $('body').removeClass('order-mode');
+                    setTimeout(function () {
+                        $('.js-cafe-items').css('maxHeight', '');
+                        $('.cafe-order-overview').hide();
+                        $('.js-item-lottie').each(function () {
+                        });
+                    }, anim_duration);
+                    Telegram.WebApp.BackButton.hide();
+                }
+                Cafe.updateBackgroundColor();
+                Cafe.updateMainButton();
+            },
+            init: function (options) {
+                Telegram.WebApp.ready();
+                Cafe.apiUrl = options.apiUrl;
+                Cafe.mode = options.mode;
+                Cafe.userId = options.userId;
+                Cafe.userHash = options.userHash;
+                Cafe.initLotties();
+                $('body').show();
+                if ((!Telegram.WebApp.initDataUnsafe ||
+                    !Telegram.WebApp.initDataUnsafe.query_id) &&
+                    Cafe.mode != 'inline' &&
+                    Cafe.mode != 'link') {
+                    Cafe.isClosed = true;
+                    $('body').addClass('closed');
+                    Cafe.showStatus('Cafe is temporarily closed');
+                    return;
+                }
+                $('.js-item-lottie').on('click', Cafe.eLottieClicked);
+                $('.js-item-incr-btn').on('click', Cafe.eIncrClicked);
+                $('.js-item-decr-btn').on('click', Cafe.eDecrClicked);
+                $('.js-order-edit').on('click', Cafe.eEditClicked);
+                $('.js-status').on('click', Cafe.eStatusClicked);
+                $('.js-order-comment-field').each(function () {
+                    autosize(this);
+                });
+                Telegram.WebApp.MainButton.setParams({
+                    text_color: '#fff'
+                }).onClick(Cafe.mainBtnClicked);
+                Telegram.WebApp.BackButton.onClick(Cafe.backBtnClicked);
+                Telegram.WebApp.setHeaderColor('bg_color');
+
+            },
+            initLotties: function () {
+                $('.js-item-lottie').each(function () {
+                    RLottie.init(this, {
+                        maxDeviceRatio: 2,
+                        cachingModulo: 3,
+                        noAutoPlay: true
+                    });
+                });
+            },
+            eIncrClicked: function (e) {
+                e.preventDefault();
+                Telegram.WebApp.HapticFeedback.impactOccurred('light');
+                var itemEl = $(this).parents('.js-item');
+                Cafe.incrClicked(itemEl, 1);
+            },
+            eDecrClicked: function (e) {
+                e.preventDefault();
+                Telegram.WebApp.HapticFeedback.impactOccurred('light');
+                var itemEl = $(this).parents('.js-item');
+                Cafe.incrClicked(itemEl, -1);
+            },
+            eEditClicked: function (e) {
+                e.preventDefault();
+                Cafe.toggleMode(false);
+            },
+            updateItem: function (itemEl, delta) {
+                var price = +itemEl.data('item-price');
+                var count = +itemEl.data('item-count') || 0;
+                var counterEl = $('.js-item-counter', itemEl);
+                counterEl.text(count ? count : 1);
+                var isSelected = itemEl.hasClass('selected');
+                if (!isSelected && count > 0) {
+                    $('.js-item-lottie', itemEl).each(function () {
+                        RLottie.playOnce(this);
+                    });
+                }
+                var anim_name = isSelected ? (delta > 0 ? 'badge-incr' : (count > 0 ? 'badge-decr' : 'badge-hide')) : 'badge-show';
+                var cur_anim_name = counterEl.css('animation-name');
+                if ((anim_name == 'badge-incr' || anim_name == 'badge-decr') && anim_name == cur_anim_name) {
+                    anim_name += '2';
+                }
+                counterEl.css('animation-name', anim_name);
+                itemEl.toggleClass('selected', count > 0);
+
+                var orderItemEl = Cafe.getOrderItem(itemEl);
+                var orderCounterEl = $('.js-order-item-counter', orderItemEl);
+                orderCounterEl.text(count ? count : 1);
+                orderItemEl.toggleClass('selected', count > 0);
+                var orderPriceEl = $('.js-order-item-price', orderItemEl);
+                var item_price = count * price;
+                orderPriceEl.text(Cafe.numberWithSpaces(item_price) + '$');
+
+                Cafe.updateTotalPrice();
+            },
+            incrClicked: function (itemEl, delta) {
+                if (Cafe.isLoading || Cafe.isClosed) {
+                    return false;
+                }
+                var count = +itemEl.data('item-count') || 0;
+                count += delta;
+                if (count < 0) {
+                    count = 0;
+                }
+                itemEl.data('item-count', count);
+                Cafe.updateItem(itemEl, delta);
+            },
+            formatNumber: function (number, decimals, decPoint, thousandsSep) {
+                number = (number + '').replace(/[^0-9+\-Ee.]/g, '')
+                var n = !isFinite(+number) ? 0 : +number
+                var prec = !isFinite(+decimals) ? 0 : Math.abs(decimals)
+                var sep = (typeof thousandsSep === 'undefined') ? ',' : thousandsSep
+                var dec = (typeof decPoint === 'undefined') ? '.' : decPoint
+                var s = ''
+                var toFixedFix = function (n, prec) {
+                    if (('' + n).indexOf('e') === -1) {
+                        return +(Math.round(n + 'e+' + prec) + 'e-' + prec)
+                    } else {
+                        var arr = ('' + n).split('e')
+                        var sig = ''
+                        if (+arr[1] + prec > 0) {
+                            sig = '+'
+                        }
+                        return (+(Math.round(+arr[0] + 'e' + sig + (+arr[1] + prec)) + 'e-' + prec)).toFixed(prec)
+                    }
+                }
+                s = (prec ? toFixedFix(n, prec).toString() : '' + Math.round(n)).split('.')
+                if (s[0].length > 3) {
+                    s[0] = s[0].replace(/\B(?=(?:\d{3})+(?!\d))/g, sep)
+                }
+                if ((s[1] || '').length < prec) {
+                    s[1] = s[1] || ''
+                    s[1] += new Array(prec - s[1].length + 1).join('0')
+                }
+                return s.join(dec)
+            },
+            numberWithSpaces: function (x) {
+                return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+            },
+            updateBackgroundColor: function () {
+                var style = window.getComputedStyle(document.body);
+                var bg_color = parseColorToHex(style.backgroundColor || '#fff');
+                Telegram.WebApp.setBackgroundColor(bg_color);
+            },
+
+        };
+
+    </script>
+    <script>Cafe.init({ "apiUrl": "https://barbucks.herokuapp.com/api/invoice", "mode": null, "userId": 0, "userHash": null });</script>
+
+
+</body>
+
+
+
+<section class="cafe-page js-cafe-items">
+    <h2 style="margin-left: 15px"> Barbucks</h2>
+    <div class="cafe-items">
+      <div class="cafe-item js-item" data-item-id="1" data-item-price="30" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbuks dark</span>
+          <p class="cafe-item-price">30$</p>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="2" data-item-price="41" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_2.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks light</span>
+          <span class="cafe-item-price">41$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="3" data-item-price="23" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_3.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks split</span>
+          <span class="cafe-item-price">23$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="4" data-item-price="33" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_4.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Burbucks weight</span>
+          <span class="cafe-item-price">33$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="5" data-item-price="54" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_5.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Burbacks strong</span>
+          <span class="cafe-item-price">54$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="6" data-item-price="65" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_6.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks odd</span>
+          <span class="cafe-item-price">65$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="7" data-item-price="91" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_7.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks milk</span>
+          <span class="cafe-item-price">91$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="8" data-item-price="54" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_8.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks lolipop</span>
+          <span class="cafe-item-price">54$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="9" data-item-price="65" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_9.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks hot</span>
+          <span class="cafe-item-price">65$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="10" data-item-price="59" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_10.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks height</span>
+          <span class="cafe-item-price">59$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="11" data-item-price="55" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_11.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks green</span>
+          <span class="cafe-item-price">55$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="12" data-item-price="37" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_12.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks red</span>
+          <span class="cafe-item-price">37$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <h2 style="margin-left: 15px">New Barbucks</h2>
+    <div class="cafe-items">
+      <div class="cafe-item js-item" data-item-id="13" data-item-price="80" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_13.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks purple</span>
+          <p class="cafe-item-price">80$</p>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="14" data-item-price="80" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_14.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks greenzen</span>
+          <span class="cafe-item-price">80$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="15" data-item-price="80" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_15.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks yellow</span>
+          <span class="cafe-item-price">80$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="cafe-item js-item" data-item-id="16" data-item-price="80" bis_skin_checked="1">
+        <div class="cafe-item-counter js-item-counter" bis_skin_checked="1">1</div>
+        <div class="cafe-item-photo" bis_skin_checked="1">
+          <img src="/meal_16.png" style="max-width: 90px;">
+        </div>
+        <div class="cafe-item-label" bis_skin_checked="1">
+          <span class="cafe-item-title">Barbucks orange</span>
+          <span class="cafe-item-price">80$</span>
+        </div>
+        <div class="cafe-item-buttons" bis_skin_checked="1">
+          <button class="cafe-item-decr-button js-item-decr-btn button-item ripple-handler">
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+          <button class="cafe-item-incr-button js-item-incr-btn button-item ripple-handler">
+            <span class="button-item-label">+</span>
+            <span class="ripple-mask"><span class="ripple"></span></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
